@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>極秘授業：殺せんせーの暗殺教室【アニメ再現版】</title>
+<style>
+body { margin: 0; background: #111; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; display: flex; height: 100vh; color: white; overflow: hidden; }
+#main { flex: 1; position: relative; background: #ffff00; transition: background 0.5s; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#webcam { position: absolute; width: 100%; height: 100%; object-fit: cover; opacity: 0.2; pointer-events: none; }
+
+/* 殺せんせーの顔 */
+#koro-face { position: absolute; width: 300px; height: 300px; transition: 0.1s ease-out; cursor: crosshair; z-index: 5; }
+.eye { position: absolute; width: 42px; height: 42px; background: black; border-radius: 50%; top: 25%; transition: 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.left { left: 25%; } .right { right: 25%; }
+#mouth { position: absolute; width: 160px; height: 20px; border-bottom: 6px solid black; border-radius: 50%; top: 48%; left: 70px; transition: 0.3s; }
+
+/* 特殊状態：シマシマ（なめまくり） */
+.teasing { background: repeating-linear-gradient(-45deg, #ffff00, #ffff00 30px, #32cd32 30px, #32cd32 60px) !important; }
+.thinking { animation: mach-shake 0.05s infinite; background: #00FF00 !important; }
+@keyframes mach-shake { 0% { transform: translate(4px,4px); } 50% { transform: translate(-4px,-4px); } 100% { transform: translate(4px,-4px); } }
+
+/* サイドバー（暗殺ノート） */
+#sidebar { width: 300px; background: #1a1a1a; border-left: 3px solid #ffd700; display: flex; flex-direction: column; padding: 20px; z-index: 30; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
+#note-list { flex: 1; overflow-y: auto; font-size: 0.95rem; margin-top: 15px; }
+.note-item { background: #2c2c2c; padding: 12px; border-radius: 10px; margin-bottom: 12px; border-left: 5px solid #ffd700; color: #eee; line-height: 1.4; animation: slideIn 0.3s ease-out; }
+@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* UI */
+#ui-overlay { position: absolute; bottom: 40px; width: 85%; z-index: 10; pointer-events: none; }
+#quiz-card { background: rgba(255,255,255,0.98); color: #222; padding: 20px; border-radius: 20px; margin-bottom: 15px; display: none; font-weight: bold; pointer-events: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 3px solid #ffd700; }
+#caption-box { background: rgba(0,0,0,0.85); padding: 18px; border-radius: 15px; text-align: center; font-size: 1.3rem; border: 1px solid #444; }
+#controls { display: flex; gap: 15px; justify-content: center; pointer-events: auto; margin-top: 15px; }
+button { padding: 12px 28px; font-size: 16px; border-radius: 30px; border: none; background: #ffd700; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 0 #b8860b; }
+button:active { transform: translateY(4px); box-shadow: none; }
+#game-btn { background: #ff4500; color: white; box-shadow: 0 4px 0 #8b0000; }
+</style>
+<script type="importmap"> { "imports": { "@google/generative-ai": "https://esm.run" } } </script>
+</head>
+<body>
+
+<div id="main">
+<video id="webcam" autoplay playsinline></video>
+<div id="koro-face">
+<div class="eye left"></div><div class="eye right"></div><div id="mouth"></div>
+</div>
+<div id="ui-overlay">
+<div id="quiz-card"></div>
+<div id="caption-box">ヌルフフフ、授業を始めましょうか？</div>
+<div id="controls">
+<button id="talk-btn">🎤 殺せんせーと話す</button>
+<button id="game-btn">🎯 暗殺訓練</button>
+</div>
+</div>
+</div>
+
+<div id="sidebar">
+<strong style="color:#ffd700; font-size: 1.2rem;">📓 今日の暗殺ノート</strong>
+<div id="note-list"></div>
+</div>
+
+<script type="module">
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const API_KEY = "ここにAPIキーを貼り付けてください";
+const genAI = new GoogleGenerativeAI(API_KEY);
+const model = genAI.getGenerativeModel({
+model: "gemini-1.5-flash",
+systemInstruction: `あなたは暗殺教室の殺せんせーです。
+【キャラ設定】
+1. 一人称は「先生」、二人称は「君」。教え子を愛する超生物の教育者です。
+2. 回答の先頭に必ず感情タグを付けてください。
+[color:yellow] 通常(陽気)
+[color:pink] 照れ(褒める時)
+[color:white] 呆れ(話が通じない時)
+[color:teasing] 煽り(余裕を見せる時・シマシマ)
+[color:red] 激怒(不道徳な時)
+3. セリフ回し：
+- 「ヌルフフフ」「にゅやっ！？」「〜ですねぇ」「〜ですよぉ」を多用してください。
+- 学習指導は親切ですが、たまに「なめまくり」ます。
+- 画像の持ち物（お菓子、ペン、スマホ等）には敏感に反応してください。
+4. 最後に【要約：1行アドバイス】を付けてください。`
+});
+
+const main = document.getElementById('main');
+const face = document.getElementById('koro-face');
+const caption = document.getElementById('caption-box');
+const quizCard = document.getElementById('quiz-card');
+const video = document.getElementById('webcam');
+
+navigator.mediaDevices.getUserMedia({ video: true }).then(s => video.srcObject = s);
+
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.lang = 'ja-JP';
+
+document.getElementById('talk-btn').onclick = () => {
+window.speechSynthesis.cancel();
+recognition.start();
+caption.innerText = "聞いていますよぉ...";
+};
+
+recognition.onresult = async (event) => {
+const userText = event.results[0][0].transcript;
+main.className = "thinking";
+caption.innerText = "マッハ20で思考中...";
+
+const canvas = document.createElement('canvas');
+canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+canvas.getContext('2d').drawImage(video, 0, 0);
+const imageData = canvas.toDataURL("image/jpeg").split(',');
+
+try {
+const result = await model.generateContent([userText, { inlineData: { data: imageData, mimeType: "image/jpeg" } }]);
+const raw = result.response.text();
+
+const color = (raw.match(/\[color:(.*?)\]/) || [null, "yellow"])[1];
+const summary = (raw.match(/【要約：(.*?)】/) || [null, "本日の手入れ完了"])[1];
+const cleanText = raw.replace(/\[color:.*?\]/g, "").replace(/【要約：.*?】/g, "").trim();
+
+updateKoro(color, cleanText, summary);
+} catch (e) {
+updateKoro("white", "にゅやっ！？通信がマッハ20に追いつきません！キーを確認してください。", "エラー発生");
+}
+};
+
+function updateKoro(color, text, summary) {
+// 背景とクラスのリセット
+main.className = "";
+main.style.background = "";
+
+if (color === "teasing") {
+main.classList.add("teasing");
+} else {
+main.style.backgroundColor = color;
+}
+
+// 目の形（呆れ顔演出）
+document.querySelectorAll('.eye').forEach(e => {
+e.style.transform = (color === "white") ? "scaleY(0.1)" : "scale(1)";
+});
+
+quizCard.style.display = "block";
+quizCard.innerText = text;
+caption.innerText = "殺せんせーの指導";
+
+speakKoro(text, color);
+
+// 暗殺ノート更新
+const item = document.createElement('div');
+item.className = 'note-item';
+item.innerHTML = `<small>${new Date().toLocaleTimeString()}</small><br>${summary}`;
+document.getElementById('note-list').prepend(item);
+}
+
+function speakKoro(text, color) {
+window.speechSynthesis.cancel();
+const uttr = new SpeechSynthesisUtterance(text);
+uttr.lang = 'ja-JP';
+
+// アニメ声再現のためのピッチ調整
+switch(color) {
+case 'pink': uttr.pitch = 1.8; uttr.rate = 1.4; break; // 照れ：高く速く
+case 'teasing': uttr.pitch = 1.1; uttr.rate = 0.9; break; // 煽り：ねっとり
+case 'red': uttr.pitch = 0.5; uttr.rate = 0.8; break; // 怒り：低く威圧的
+case 'white': uttr.pitch = 0.8; uttr.rate = 0.7; break; // 呆れ：低く遅く
+default: uttr.pitch = 1.5; uttr.rate = 1.2; break; // 通常：高く陽気
+}
+
+window.speechSynthesis.speak(uttr);
+}
+
+// --- 暗殺ゲーム（マッハ20回避） ---
+let isGaming = false;
+document.getElementById('game-btn').onclick = () => {
+if(isGaming) return;
+isGaming = true;
+let hits = 0;
+caption.innerText = "ヌルフフフ、私を殺せますか？";
+
+const move = setInterval(() => {
+face.style.left = Math.random() * (main.offsetWidth - 300) + "px";
+face.style.top = Math.random() * (main.offsetHeight - 300) + "px";
+}, 400);
+
+face.onclick = (e) => {
+hits++;
+const s = document.createElement('div');
+s.style.cssText = `position:absolute; width:150px; height:4px; background:white; left:${e.pageX}px; top:${e.pageY}px; transform:rotate(45deg); animation:slash 0.3s forwards; z-index:100;`;
+document.body.appendChild(s);
+setTimeout(() => s.remove(), 300);
+};
+
+setTimeout(() => {
+clearInterval(move);
+isGaming = false;
+face.style.left = "calc(50% - 150px)"; face.style.top = "calc(50% - 150px)";
+if(hits > 0) updateKoro("pink", `にゅやっ！まさか本当に当てるとは...君、才能がありますねぇ！`, "暗殺訓練：大成功");
+else updateKoro("teasing", "ヌルフフフ、手入れが必要なようですねぇ。もっとマッハで動きなさい！", "暗殺訓練：完敗");
+}, 8000);
+};
+</script>
+<style>@keyframes slash { 0%{opacity:1; transform:scaleX(0) rotate(45deg);} 100%{opacity:0; transform:scaleX(2) rotate(45deg);} }</style>
+</body>
+  </html>
